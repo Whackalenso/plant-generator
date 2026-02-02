@@ -1,6 +1,8 @@
 // Grid dimensions
-const GRID_SIZE = 50;
-const PIXEL_SIZE = 10; // Each pixel will be 5x5 screen pixels for visibility
+const GRID_WIDTH = Math.floor(window.innerWidth / 10);
+const GRID_HEIGHT = Math.floor((window.innerHeight) / 10); // Account for button area at bottom
+const GRID_SIZE = GRID_WIDTH; // For backward compatibility with existing code
+const PIXEL_SIZE = 10; // Each pixel will be 10x10 screen pixels
 const MIN_DICTANCE_FROM_EDGE = 5; // Minimum distance from edge to allow growth
 
 // 2D array to store pixel colors
@@ -138,7 +140,7 @@ class TreeNode {
             const newY = this.y + dir.y;
             
             // Check bounds and if position is empty
-            if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE && 
+            if (newX >= 0 && newX < GRID_WIDTH && newY >= 0 && newY < GRID_HEIGHT && 
                 !isPositionOccupied(newX, newY)) {
                 // Child inherits parent's angle and color
                 const child = new TreeNode(newX, newY, this.angle, this);
@@ -173,7 +175,7 @@ class TreeNode {
         const newX = this.x + dir.x;
         const newY = this.y + dir.y;
         
-        if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE && 
+        if (newX >= 0 && newX < GRID_WIDTH && newY >= 0 && newY < GRID_HEIGHT && 
             !isPositionOccupied(newX, newY)) {
             const child = new TreeNode(newX, newY, branchAngle, this);
             child.color = getRandomBranchColor(); // Assign random color to new branch
@@ -258,8 +260,9 @@ class Flower {
         
         // Find a valid petal position that hasn't been added yet
         for (const petal of possiblePetals) {
-            if (petal.x >= 0 && petal.x < GRID_SIZE && petal.y >= 0 && petal.y < GRID_SIZE &&
+            if (petal.x >= 0 && petal.x < GRID_WIDTH && petal.y >= 0 && petal.y < GRID_HEIGHT &&
                 !this.isPositionOccupiedByFlower(petal.x, petal.y) &&
+                !isPositionOccupied(petal.x, petal.y) &&
                 !this.petalPositions.some(existing => existing.x === petal.x && existing.y === petal.y)) {
                 
                 this.petalPositions.push(petal);
@@ -273,7 +276,7 @@ class Flower {
         // Draw yellow center pixels
         fill(255, 255, 0); // Yellow
         for (const pixel of this.yellowPixels) {
-            if (pixel.x >= 0 && pixel.x < GRID_SIZE && pixel.y >= 0 && pixel.y < GRID_SIZE) {
+            if (pixel.x >= 0 && pixel.x < GRID_WIDTH && pixel.y >= 0 && pixel.y < GRID_HEIGHT) {
                 rect(pixel.x * PIXEL_SIZE, pixel.y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
             }
         }
@@ -281,7 +284,7 @@ class Flower {
         // Draw white petal pixels
         fill(0, 0, 255); // White
         for (const petal of this.petalPositions) {
-            if (petal.x >= 0 && petal.x < GRID_SIZE && petal.y >= 0 && petal.y < GRID_SIZE) {
+            if (petal.x >= 0 && petal.x < GRID_WIDTH && petal.y >= 0 && petal.y < GRID_HEIGHT) {
                 rect(petal.x * PIXEL_SIZE, petal.y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
             }
         }
@@ -298,20 +301,19 @@ class Flower {
 let treeRoot = null;
 
 // Check if a position is already occupied by a node
-function isPositionOccupied(x, y) {
+function isPositionOccupied(x, y, color) {
     if (!treeRoot) return false;
     
     const allNodes = treeRoot.getAllNodes();
-    return allNodes.some(node => node.x === x && node.y === y);
+    return allNodes.some(node => node.x === x && node.y === y && node.color === color);
 }
-
 // Check if a branch is too close to the edge in its growth direction
 function isTooCloseToEdge(x, y, angle) {
     const dir = angleToDirection(angle);
     const newX = x + dir.x * MIN_DICTANCE_FROM_EDGE;
     const newY = y + dir.y * MIN_DICTANCE_FROM_EDGE;
     
-    return newX < 0 || newX >= GRID_SIZE || newY < 0 || newY >= GRID_SIZE;
+    return newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT;
 }
 
 // Generate random color for branches (shades of green)
@@ -348,13 +350,14 @@ function findFlowerAt(x, y) {
 }
 
 function setup() {
-    createCanvas(GRID_SIZE * PIXEL_SIZE, GRID_SIZE * PIXEL_SIZE);
+    const canvas = createCanvas(GRID_WIDTH * PIXEL_SIZE, GRID_HEIGHT * PIXEL_SIZE);
+    canvas.parent('canvas-container');
     noStroke();
     
     // Initialize grid with white pixels
-    for (let x = 0; x < GRID_SIZE; x++) {
+    for (let x = 0; x < GRID_WIDTH; x++) {
         pixelGrid[x] = [];
-        for (let y = 0; y < GRID_SIZE; y++) {
+        for (let y = 0; y < GRID_HEIGHT; y++) {
             pixelGrid[x][y] = color(255);
         }
     }
@@ -376,7 +379,7 @@ function draw() {
 
 // Main function to draw a pixel at grid position (x, y) with given color
 function drawPixel(x, y, col) {
-    if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+    if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT) {
         pixelGrid[x][y] = col;
         fill(col);
         rect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
@@ -385,8 +388,8 @@ function drawPixel(x, y, col) {
 
 // Draw the entire grid
 function drawGrid() {
-    for (let x = 0; x < GRID_SIZE; x++) {
-        for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        for (let y = 0; y < GRID_HEIGHT; y++) {
             fill(pixelGrid[x][y]);
             rect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
         }
@@ -396,8 +399,8 @@ function drawGrid() {
 // Start function - creates the root of the tree
 function start() {
     // Create root node at bottom center with angle 90 (up)
-    const x = Math.floor(GRID_SIZE / 2); // Center x position
-    const y = GRID_SIZE - 1; // Bottom row (0-indexed)
+    const x = Math.floor(GRID_WIDTH / 2); // Center x position
+    const y = GRID_HEIGHT - 1; // Bottom row (0-indexed)
     treeRoot = new TreeNode(x, y, 90); // 90 degrees = up
     drawPixel(x, y, treeRoot.color);
     
@@ -462,8 +465,8 @@ function createFlowerAtPosition(x, y) {
     let centerY = y;
     
     // Adjust if too close to right or bottom edges
-    if (centerX >= GRID_SIZE - 1) centerX = GRID_SIZE - 2;
-    if (centerY >= GRID_SIZE - 1) centerY = GRID_SIZE - 2;
+    if (centerX >= GRID_WIDTH - 1) centerX = GRID_WIDTH - 2;
+    if (centerY >= GRID_HEIGHT - 1) centerY = GRID_HEIGHT - 2;
     
     const flower = new Flower(centerX, centerY);
     flowers.push(flower);
@@ -489,8 +492,8 @@ function createFlower() {
         let centerY = randomEndingNode.y;
         
         // Adjust if too close to right or bottom edges
-        if (centerX >= GRID_SIZE - 1) centerX = GRID_SIZE - 2;
-        if (centerY >= GRID_SIZE - 1) centerY = GRID_SIZE - 2;
+        if (centerX >= GRID_WIDTH - 1) centerX = GRID_WIDTH - 2;
+        if (centerY >= GRID_HEIGHT - 1) centerY = GRID_HEIGHT - 2;
         
         const flower = new Flower(centerX, centerY);
         flowers.push(flower);
