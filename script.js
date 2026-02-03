@@ -1,8 +1,8 @@
 // Grid dimensions
-const GRID_WIDTH = Math.floor(window.innerWidth / 10);
-const GRID_HEIGHT = Math.floor((window.innerHeight) / 10); // Account for button area at bottom
+const PIXEL_SIZE = 15; // Each pixel will be 10x10 screen pixels
+const GRID_WIDTH = Math.floor(window.innerWidth / PIXEL_SIZE);
+const GRID_HEIGHT = Math.floor((window.innerHeight) / PIXEL_SIZE); // Account for button area at bottom
 const GRID_SIZE = GRID_WIDTH; // For backward compatibility with existing code
-const PIXEL_SIZE = 10; // Each pixel will be 10x10 screen pixels
 const MIN_DICTANCE_FROM_EDGE = 5; // Minimum distance from edge to allow growth
 
 // 2D array to store pixel colors
@@ -224,10 +224,17 @@ class TreeNode {
 
 // Flower class - represents an entire flower
 class Flower {
+    static COLORS = [
+        [255, 0, 0],    // Red
+        [255, 165, 0],  // Orange
+        [0, 0, 255],    // Blue
+        [128, 0, 128]   // Purple
+    ];
     constructor(centerX, centerY) {
         this.centerX = centerX;
         this.centerY = centerY;
         this.petalPositions = []; // Store petal positions
+        this.color = Flower.COLORS[Math.floor(Math.random() * Flower.COLORS.length)];
         
         // Create 2x2 yellow cube at center
         this.yellowPixels = [
@@ -281,8 +288,7 @@ class Flower {
             }
         }
         
-        // Draw white petal pixels
-        fill(0, 0, 255); // White
+        fill(this.color[0], this.color[1], this.color[2]); // Petal color
         for (const petal of this.petalPositions) {
             if (petal.x >= 0 && petal.x < GRID_WIDTH && petal.y >= 0 && petal.y < GRID_HEIGHT) {
                 rect(petal.x * PIXEL_SIZE, petal.y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
@@ -294,6 +300,42 @@ class Flower {
     isPositionOccupiedByFlower(x, y) {
         return this.yellowPixels.some(pixel => pixel.x === x && pixel.y === y) ||
                this.petalPositions.some(petal => petal.x === x && petal.y === y);
+    }
+}
+
+class Pot {
+    static GROW_POINT = {x: 3, y: 1}; // Relative to pot image
+    static img;
+    static load () {
+        Pot.img = loadImage('pot.png');
+    }
+    static draw() {
+        Pot.img.loadPixels();
+        console.log(Pot.img.height, Pot.img.width);
+
+        // Calculate position to center pot at bottom of screen
+        const potWidth = Pot.img.width;
+        const potHeight = Pot.img.height;
+        const startX = Math.floor((GRID_WIDTH - potWidth) / 2);
+        const startY = GRID_HEIGHT - potHeight;
+
+        // 2. Loop through every pixel
+        for (let y = 0; y < potHeight; y++) {
+            for (let x = 0; x < potWidth; x++) {
+                
+                // Calculate the index in the flat array
+                let index = (x + y * potWidth) * 4;
+                let r = Pot.img.pixels[index];
+                let g = Pot.img.pixels[index + 1];
+                let b = Pot.img.pixels[index + 2];
+                let a = Pot.img.pixels[index + 3];
+                
+                // If pixel is not transparent, draw it on the grid
+                if (a > 0) {
+                    drawPixel(startX + x, startY + y, `rgb(${r}, ${g}, ${b})`);
+                }
+            }
+        }
     }
 }
 
@@ -349,9 +391,16 @@ function findFlowerAt(x, y) {
     return flowers.find(flower => flower.isPositionOccupiedByFlower(x, y));
 }
 
+function preload() {
+    console.log("Preloading pot image");
+    Pot.load();
+}
+
 function setup() {
     const canvas = createCanvas(GRID_WIDTH * PIXEL_SIZE, GRID_HEIGHT * PIXEL_SIZE);
     canvas.parent('canvas-container');
+    canvas.id("canvas");
+    
     noStroke();
     
     // Initialize grid with white pixels
@@ -363,6 +412,7 @@ function setup() {
     }
     
     drawGrid();
+    Pot.draw()
 }
 
 function keyPressed() {
@@ -396,17 +446,74 @@ function drawGrid() {
     }
 }
 
-// Start function - creates the root of the tree
+// Start/Kill function - toggles between grow and kill modes
 function start() {
-    // Create root node at bottom center with angle 90 (up)
-    const x = Math.floor(GRID_WIDTH / 2); // Center x position
-    const y = GRID_HEIGHT - 1; // Bottom row (0-indexed)
-    treeRoot = new TreeNode(x, y, 90); // 90 degrees = up
-    drawPixel(x, y, treeRoot.color);
+    const growBtn = document.getElementById('startBtn');
     
-    // Start auto-growth automatically
-    isAutoGrowing = true;
-    autoGrowthInterval = setInterval(growTree, 100); // 5 times per second
+    if (growBtn.textContent === 'Grow') {
+        // Grow mode - start growing
+        growBtn.textContent = 'Kill';
+        growBtn.classList.add('kill');
+        growBtn.classList.remove('grow');
+        
+        // Show options
+        document.querySelector('.options').style.display = 'flex';
+        
+        // Calculate pot position to center it at bottom of screen
+        const potWidth = Pot.img.width;
+        const potHeight = Pot.img.height;
+        const potStartX = Math.floor((GRID_WIDTH - potWidth) / 2);
+        const potStartY = GRID_HEIGHT - potHeight;
+        
+        // Calculate plant start position based on GROW_POINT relative to pot
+        const x = potStartX + Pot.GROW_POINT.x;
+        const y = potStartY + Pot.GROW_POINT.y;
+        
+        // Create root node at the GROW_POINT position with angle 90 (up)
+        treeRoot = new TreeNode(x, y, 90); // 90 degrees = up
+        drawPixel(x, y, treeRoot.color);
+        
+        // Start auto-growth automatically
+        isAutoGrowing = true;
+        autoGrowthInterval = setInterval(growTree, 100); // 5 times per second
+    } else {
+        // Kill mode - reset everything
+        kill();
+    }
+}
+
+// Reset game state back to beginning
+function kill() {
+    // Stop auto-growth
+    if (autoGrowthInterval) {
+        clearInterval(autoGrowthInterval);
+        autoGrowthInterval = null;
+    }
+    isAutoGrowing = false;
+    
+    // Clear plant and flowers
+    treeRoot = null;
+    flowers = [];
+    
+    // Reset grid
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        for (let y = 0; y < GRID_HEIGHT; y++) {
+            pixelGrid[x][y] = color(255);
+        }
+    }
+    
+    // Redraw pot (so it persists)
+    Pot.draw();
+    drawGrid();
+    
+    // Reset button
+    const growBtn = document.getElementById('startBtn');
+    growBtn.textContent = 'Grow';
+    growBtn.classList.add('grow');
+    growBtn.classList.remove('kill');
+    
+    // Hide options
+    document.querySelector('.options').style.display = 'none';
 }
 
 // Global variables for auto-growth

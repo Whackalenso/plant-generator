@@ -11,7 +11,11 @@
 <body>
     <div id="canvas-container"></div>
     <div id="controls">
-        <button id="startBtn" onclick="start()">Grow</button>
+        <button id="startBtn" class="grow" onclick="start()">Grow</button>
+        <div class="options">
+            <button id="branchBtn" onclick="branchTree()">Branch (b)</button>
+            <button id="resetBtn" onclick="createFlower()">Flower (f)</button>
+        </div>
     </div>
 </body>
 </html>
