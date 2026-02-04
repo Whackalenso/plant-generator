@@ -2,34 +2,12 @@
 const PIXEL_SIZE = 15; // Each pixel will be 10x10 screen pixels
 const GRID_WIDTH = Math.floor(window.innerWidth / PIXEL_SIZE);
 const GRID_HEIGHT = Math.floor((window.innerHeight) / PIXEL_SIZE); // Account for button area at bottom
-const GRID_SIZE = GRID_WIDTH; // For backward compatibility with existing code
-const MIN_DICTANCE_FROM_EDGE = 5; // Minimum distance from edge to allow growth
+const MIN_DISTANCE_FROM_EDGE = 5; // Minimum distance from edge to allow growth
 
-// 2D array to store pixel colors
-let pixelGrid = [];
+class BranchNode {
+    static root = null; // Static reference to the root node
 
-// Convert angle in degrees to grid direction
-function angleToDirection(angle) {
-    // Normalize angle to 0-360
-    angle = ((angle % 360) + 360) % 360;
-    
-    // Convert to radians
-    const radians = (angle * Math.PI) / 180;
-    
-    // Calculate direction vector
-    return {
-        x: Math.round(Math.cos(radians)),
-        y: Math.round(-Math.sin(radians)) // Negative because y increases downward
-    };
-}
-
-// Get growth probabilities based on angle
-function getGrowthProbabilities(angle) {
-    // Normalize angle to 0-360
-    angle = ((angle % 360) + 360) % 360;
-    
-    // Determine which quadrants the angle falls into
-    const probabilities = {
+    static DIRECTION_PROBABILITIES = {
         0: {
             up: 0.25,
             down: 0.25,
@@ -79,71 +57,50 @@ function getGrowthProbabilities(angle) {
             right: 0.50
         }
     }
-    
-    return probabilities[angle];
-}
-
-// Choose a direction based on probabilities
-function chooseDirection(probabilities) {
-    const rand = Math.random();
-    let cumulative = 0;
-    
-    const directions = ['up', 'right', 'down', 'left'];
-    for (const dir of directions) {
-        cumulative += probabilities[dir];
-        if (rand <= cumulative) {
-            return dir;
-        }
+    static DIR_TO_VEC = {
+        up: { x: 0, y: -1 },
+        down: { x: 0, y: 1 },
+        left: { x: -1, y: 0 },
+        right: { x: 1, y: 0 }
     }
-    
-    return 'up'; // Fallback
-}
 
-// Tree node class
-class TreeNode {
-    constructor(x, y, angle = 90, parent = null) {
+    constructor(x, y, parent = null) {
         this.x = x;
         this.y = y;
-        this.angle = angle; // Angle in degrees (90 = up, 0 = right, 180 = left, 270 = down)
-        this.parent = parent;
         this.children = [];
-        this.color = color(0, 255, 0); // Default green color
+        this.parent = parent;
+        if (parent) {
+            const newBranch = parent.children.length > 0;
+            this.angle = newBranch ? ((parent.angle + (Math.random() < 0.5 ? 45 : -45) + 360) % 360) : parent.angle;
+            this.color = newBranch ? BranchNode.getRandomBranchColor() : parent.color;
+        } else {
+            this.angle = 90; // Default to upward growth
+            this.color = BranchNode.getRandomBranchColor();
+        }
     }
     
     grow() {
         // Check if current position is too close to edge in growth direction
-        if (isTooCloseToEdge(this.x, this.y, this.angle)) {
+        if (this.isAtEdge(this.x, this.y)) {
             // Start a flower at this position if not already stopped
             if (!this.isStopped) {
                 this.isStopped = true;
-                createFlowerAtPosition(this.x, this.y);
+                new Flower(this.x, this.y);
             }
             return null;
         }
         
-        const probabilities = getGrowthProbabilities(this.angle);
-        
         // Try to find a valid direction (up to 10 attempts)
         for (let attempt = 0; attempt < 10; attempt++) {
-            const chosenDirection = chooseDirection(probabilities);
-            
-            // Map chosen direction to movement vector
-            let dir;
-            switch(chosenDirection) {
-                case 'up': dir = { x: 0, y: -1 }; break;
-                case 'right': dir = { x: 1, y: 0 }; break;
-                case 'down': dir = { x: 0, y: 1 }; break;
-                case 'left': dir = { x: -1, y: 0 }; break;
-            }
+            const dir = BranchNode.chooseDirection(this.angle);
             
             const newX = this.x + dir.x;
             const newY = this.y + dir.y;
             
             // Check bounds and if position is empty
             if (newX >= 0 && newX < GRID_WIDTH && newY >= 0 && newY < GRID_HEIGHT && 
-                !isPositionOccupied(newX, newY)) {
-                // Child inherits parent's angle and color
-                const child = new TreeNode(newX, newY, this.angle, this);
+                this.canGrowInto(newX, newY)) {
+                const child = new BranchNode(newX, newY, parent=this);
                 child.color = this.color; // Inherit parent's color
                 this.children.push(child);
                 drawPixel(newX, newY, child.color);
@@ -156,40 +113,30 @@ class TreeNode {
     }
     
     branch() {
-        // Choose either +45 or -45 degrees from current angle
-        const offset = Math.random() < 0.5 ? 45 : -45;
-        const branchAngle = ((this.angle + offset) % 360 + 360) % 360;
-        
-        // Check if current position is too close to edge in branch growth direction
-        if (isTooCloseToEdge(this.x, this.y, branchAngle)) {
-            // Start a flower at this position if not already stopped
-            if (!this.isStopped) {
-                this.isStopped = true;
-                createFlowerAtPosition(this.x, this.y);
-            }
-            return null;
-        }
-        
-        const dir = angleToDirection(branchAngle);
-        
-        const newX = this.x + dir.x;
-        const newY = this.y + dir.y;
-        
-        if (newX >= 0 && newX < GRID_WIDTH && newY >= 0 && newY < GRID_HEIGHT && 
-            !isPositionOccupied(newX, newY)) {
-            const child = new TreeNode(newX, newY, branchAngle, this);
-            child.color = getRandomBranchColor(); // Assign random color to new branch
-            this.children.push(child);
-            drawPixel(newX, newY, child.color);
-            
-            return child;
-        }
-        return null;
+        const branch = new BranchNode(this.x, this.y, parent=this);
+        this.children.push(branch);
+        branch.grow();
+
+        return branch;
     }
-    
-    // Check if this node is an ending (leaf) node
-    isEnding() {
-        return this.children.length === 0 && !this.isStopped;
+
+    // Generate random color for branches (shades of green)
+    static getRandomBranchColor() {
+        const greenShades = [
+            color(0, 200, 0),    // Dark green
+            color(0, 210, 0),    // Slightly lighter dark green
+            color(0, 190, 0),    // Slightly darker green
+            color(0, 205, 0),    // Medium dark green
+            color(0, 195, 0),    // Medium green
+            color(0, 220, 0),    // Lighter green
+            color(0, 185, 0),    // Darker medium green
+            color(0, 215, 0),    // Medium-light green
+            color(0, 180, 0),    // Darker shade
+            color(0, 225, 0),    // Lightest shade
+            color(0, 175, 0),    // Very dark shade
+            color(0, 230, 0)     // Light green
+        ];
+        return greenShades[Math.floor(Math.random() * greenShades.length)];
     }
     
     // Get all ending nodes in this subtree
@@ -197,7 +144,7 @@ class TreeNode {
         const endings = [];
         
         function traverse(node) {
-            if (node.isEnding()) {
+            if (node.children.length === 0 && !node.isStopped) {
                 endings.push(node);
             } else {
                 node.children.forEach(child => traverse(child));
@@ -220,8 +167,59 @@ class TreeNode {
         traverse(this);
         return allNodes;
     }
-}
+    
+    // Check if a position is already occupied by a node
+    canGrowInto(x, y) { 
+        if (!BranchNode.root) return false;
+        
+        const allNodes = BranchNode.root.getAllNodes();
+        return !allNodes.some(node => node.x === x && node.y === y && node.color === this.color);
+    }
+    // Check if a branch is too close to the edge in its growth direction
+    isAtEdge(x, y) {
+        const dir = BranchNode.angleToDirection(this.angle);
+        const newX = x + dir.x * MIN_DISTANCE_FROM_EDGE;
+        const newY = y + dir.y * MIN_DISTANCE_FROM_EDGE;
+        
+        return newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT;
+    }
 
+    // // Convert angle in degrees to grid direction
+    static angleToDirection(angle) {
+        // Normalize angle to 0-360
+        angle = ((angle % 360) + 360) % 360;
+        
+        // Convert to radians
+        const radians = (angle * Math.PI) / 180;
+        
+        // Calculate direction vector
+        return {
+            x: Math.round(Math.cos(radians)),
+            y: Math.round(-Math.sin(radians)) // Negative because y increases downward
+        };
+    }
+
+    // Choose a direction based on probabilities
+    static chooseDirection(angle) {
+        // Normalize angle to 0-360
+        angle = ((angle % 360) + 360) % 360;
+        const probabilities = BranchNode.DIRECTION_PROBABILITIES[angle];
+
+        const rand = Math.random();
+        let cumulative = 0;
+        
+        const directions = ['up', 'right', 'down', 'left'];
+        for (const dir of directions) {
+            cumulative += probabilities[dir];
+            if (rand <= cumulative) {
+                return BranchNode.DIR_TO_VEC[dir];
+            }
+        }
+
+        throw "Error: Direction probabilities do not sum to 1."
+    }
+}
+    
 // Flower class - represents an entire flower
 class Flower {
     static COLORS = [
@@ -230,14 +228,21 @@ class Flower {
         [0, 0, 255],    // Blue
         [128, 0, 128]   // Purple
     ];
+    static flowers = []; // Static array to hold all flower instances
+
     constructor(centerX, centerY) {
+        // Adjust if too close to right or bottom edges
+        if (centerX >= GRID_WIDTH - 1) centerX = GRID_WIDTH - 2;
+        if (centerY >= GRID_HEIGHT - 1) centerY = GRID_HEIGHT - 2;
+
         this.centerX = centerX;
         this.centerY = centerY;
+
         this.petalPositions = []; // Store petal positions
         this.color = Flower.COLORS[Math.floor(Math.random() * Flower.COLORS.length)];
         
         // Create 2x2 yellow cube at center
-        this.yellowPixels = [
+        this.centerPixels = [
             {x: centerX, y: centerY},
             {x: centerX + 1, y: centerY},
             {x: centerX, y: centerY + 1},
@@ -246,6 +251,7 @@ class Flower {
         
         // Draw the initial flower
         this.draw();
+        Flower.flowers.push(this);
     }
     
     grow() {
@@ -268,8 +274,6 @@ class Flower {
         // Find a valid petal position that hasn't been added yet
         for (const petal of possiblePetals) {
             if (petal.x >= 0 && petal.x < GRID_WIDTH && petal.y >= 0 && petal.y < GRID_HEIGHT &&
-                !this.isPositionOccupiedByFlower(petal.x, petal.y) &&
-                !isPositionOccupied(petal.x, petal.y) &&
                 !this.petalPositions.some(existing => existing.x === petal.x && existing.y === petal.y)) {
                 
                 this.petalPositions.push(petal);
@@ -282,7 +286,7 @@ class Flower {
     draw() {
         // Draw yellow center pixels
         fill(255, 255, 0); // Yellow
-        for (const pixel of this.yellowPixels) {
+        for (const pixel of this.centerPixels) {
             if (pixel.x >= 0 && pixel.x < GRID_WIDTH && pixel.y >= 0 && pixel.y < GRID_HEIGHT) {
                 rect(pixel.x * PIXEL_SIZE, pixel.y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
             }
@@ -295,36 +299,33 @@ class Flower {
             }
         }
     }
-    
-    // Check if a position is occupied by this flower
-    isPositionOccupiedByFlower(x, y) {
-        return this.yellowPixels.some(pixel => pixel.x === x && pixel.y === y) ||
-               this.petalPositions.some(petal => petal.x === x && petal.y === y);
-    }
 }
 
 class Pot {
     static GROW_POINT = {x: 3, y: 1}; // Relative to pot image
     static img;
+    static x;
+    static y;
+
     static load () {
         Pot.img = loadImage('pot.png');
     }
+
+    static getGrowPoint() {
+        return {x: Pot.x + Pot.GROW_POINT.x, y: Pot.y + Pot.GROW_POINT.y};
+    }
+
     static draw() {
         Pot.img.loadPixels();
-        console.log(Pot.img.height, Pot.img.width);
-
-        // Calculate position to center pot at bottom of screen
-        const potWidth = Pot.img.width;
-        const potHeight = Pot.img.height;
-        const startX = Math.floor((GRID_WIDTH - potWidth) / 2);
-        const startY = GRID_HEIGHT - potHeight;
+        Pot.x = Math.floor((GRID_WIDTH - Pot.img.width) / 2);
+        Pot.y = GRID_HEIGHT - Pot.img.height;
 
         // 2. Loop through every pixel
-        for (let y = 0; y < potHeight; y++) {
-            for (let x = 0; x < potWidth; x++) {
-                
+        for (let y = 0; y < Pot.img.height; y++) {
+            for (let x = 0; x < Pot.img.width; x++) {
+
                 // Calculate the index in the flat array
-                let index = (x + y * potWidth) * 4;
+                let index = (x + y * Pot.img.width) * 4;
                 let r = Pot.img.pixels[index];
                 let g = Pot.img.pixels[index + 1];
                 let b = Pot.img.pixels[index + 2];
@@ -332,63 +333,11 @@ class Pot {
                 
                 // If pixel is not transparent, draw it on the grid
                 if (a > 0) {
-                    drawPixel(startX + x, startY + y, `rgb(${r}, ${g}, ${b})`);
+                    drawPixel(Pot.x + x, Pot.y + y, `rgb(${r}, ${g}, ${b})`);
                 }
             }
         }
     }
-}
-
-// Global tree root
-let treeRoot = null;
-
-// Check if a position is already occupied by a node
-function isPositionOccupied(x, y, color) {
-    if (!treeRoot) return false;
-    
-    const allNodes = treeRoot.getAllNodes();
-    return allNodes.some(node => node.x === x && node.y === y && node.color === color);
-}
-// Check if a branch is too close to the edge in its growth direction
-function isTooCloseToEdge(x, y, angle) {
-    const dir = angleToDirection(angle);
-    const newX = x + dir.x * MIN_DICTANCE_FROM_EDGE;
-    const newY = y + dir.y * MIN_DICTANCE_FROM_EDGE;
-    
-    return newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT;
-}
-
-// Generate random color for branches (shades of green)
-function getRandomBranchColor() {
-    const greenShades = [
-        color(0, 200, 0),    // Dark green
-        color(0, 210, 0),    // Slightly lighter dark green
-        color(0, 190, 0),    // Slightly darker green
-        color(0, 205, 0),    // Medium dark green
-        color(0, 195, 0),    // Medium green
-        color(0, 220, 0),    // Lighter green
-        color(0, 185, 0),    // Darker medium green
-        color(0, 215, 0),    // Medium-light green
-        color(0, 180, 0),    // Darker shade
-        color(0, 225, 0),    // Lightest shade
-        color(0, 175, 0),    // Very dark shade
-        color(0, 230, 0)     // Light green
-    ];
-    return greenShades[Math.floor(Math.random() * greenShades.length)];
-}
-
-// Global variables for flower management
-let flowers = [];
-let flowerGrowthInterval = null;
-
-// Check if a position is occupied by any flower
-function isPositionOccupiedByFlower(x, y) {
-    return flowers.some(flower => flower.isPositionOccupiedByFlower(x, y));
-}
-
-// Find flower at specific position
-function findFlowerAt(x, y) {
-    return flowers.find(flower => flower.isPositionOccupiedByFlower(x, y));
 }
 
 function preload() {
@@ -402,129 +351,93 @@ function setup() {
     canvas.id("canvas");
     
     noStroke();
-    
-    // Initialize grid with white pixels
-    for (let x = 0; x < GRID_WIDTH; x++) {
-        pixelGrid[x] = [];
-        for (let y = 0; y < GRID_HEIGHT; y++) {
-            pixelGrid[x][y] = color(255);
-        }
-    }
-    
-    drawGrid();
-    Pot.draw()
+
+    Pot.draw();
 }
 
 function keyPressed() {
     if (key === 'b' || key === 'B') {
-        branchTree();
+        branchBtn();
     } else if (key === 'f' || key === 'F') {
-        createFlower();
+        flowerBtn();
     }
-}
-
-function draw() {
-    // Only redraw when needed
 }
 
 // Main function to draw a pixel at grid position (x, y) with given color
 function drawPixel(x, y, col) {
     if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT) {
-        pixelGrid[x][y] = col;
         fill(col);
         rect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
     }
 }
 
-// Draw the entire grid
-function drawGrid() {
-    for (let x = 0; x < GRID_WIDTH; x++) {
-        for (let y = 0; y < GRID_HEIGHT; y++) {
-            fill(pixelGrid[x][y]);
-            rect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
-        }
+// Start/Kill function - toggles between grow and kill modes
+function bigBtn() {
+    const button = document.getElementById('bigBtn');
+    
+    if (button.textContent === 'Grow') {
+        start();
+
+        button.textContent = 'Kill';
+        button.classList.add('kill');
+        button.classList.remove('grow');
+    } else {
+        reset();
+
+        button.textContent = 'Grow';
+        button.classList.add('grow');
+        button.classList.remove('kill');
     }
 }
 
-// Start/Kill function - toggles between grow and kill modes
 function start() {
-    const growBtn = document.getElementById('startBtn');
+    // Show options
+    document.querySelector('.options').style.display = 'flex';
     
-    if (growBtn.textContent === 'Grow') {
-        // Grow mode - start growing
-        growBtn.textContent = 'Kill';
-        growBtn.classList.add('kill');
-        growBtn.classList.remove('grow');
-        
-        // Show options
-        document.querySelector('.options').style.display = 'flex';
-        
-        // Calculate pot position to center it at bottom of screen
-        const potWidth = Pot.img.width;
-        const potHeight = Pot.img.height;
-        const potStartX = Math.floor((GRID_WIDTH - potWidth) / 2);
-        const potStartY = GRID_HEIGHT - potHeight;
-        
-        // Calculate plant start position based on GROW_POINT relative to pot
-        const x = potStartX + Pot.GROW_POINT.x;
-        const y = potStartY + Pot.GROW_POINT.y;
-        
-        // Create root node at the GROW_POINT position with angle 90 (up)
-        treeRoot = new TreeNode(x, y, 90); // 90 degrees = up
-        drawPixel(x, y, treeRoot.color);
-        
-        // Start auto-growth automatically
-        isAutoGrowing = true;
-        autoGrowthInterval = setInterval(growTree, 100); // 5 times per second
-    } else {
-        // Kill mode - reset everything
-        kill();
-    }
+    const growPoint = Pot.getGrowPoint();
+    
+    // Create root node at the GROW_POINT position with angle 90 (up)
+    BranchNode.root = new BranchNode(growPoint.x, growPoint.y); // 90 degrees = up
+    drawPixel(growPoint.x, growPoint.y, BranchNode.root.color);
+
+    tickInterval = setInterval(tick, 100); // 5 times per second
 }
 
 // Reset game state back to beginning
-function kill() {
+function reset() {
     // Stop auto-growth
-    if (autoGrowthInterval) {
-        clearInterval(autoGrowthInterval);
-        autoGrowthInterval = null;
+    if (tickInterval) {
+        clearInterval(tickInterval);
+        tickInterval = null;
     }
     isAutoGrowing = false;
     
-    // Clear plant and flowers
-    treeRoot = null;
-    flowers = [];
+    // Clear plant and Flower.flowers
+    BranchNode.root = null;
+    Flower.flowers = [];
     
     // Reset grid
     for (let x = 0; x < GRID_WIDTH; x++) {
         for (let y = 0; y < GRID_HEIGHT; y++) {
-            pixelGrid[x][y] = color(255);
+            drawPixel(x, y, color(255));
         }
     }
     
     // Redraw pot (so it persists)
     Pot.draw();
-    drawGrid();
-    
-    // Reset button
-    const growBtn = document.getElementById('startBtn');
-    growBtn.textContent = 'Grow';
-    growBtn.classList.add('grow');
-    growBtn.classList.remove('kill');
     
     // Hide options
     document.querySelector('.options').style.display = 'none';
 }
 
-// Global variables for auto-growth
-let isAutoGrowing = false;
-let autoGrowthInterval = null;
+// // Global variables for auto-growth
+let tickInterval = null;
 
 // Function to grow from a random ending node
-function growTree() {
+function tick() {
     // Grow branches
-    if (treeRoot) {
-        const endingNodes = treeRoot.getEndingNodes();
+    if (BranchNode.root) {
+        const endingNodes = BranchNode.root.getEndingNodes();
         endingNodes.forEach(node => {
             if (!node.isStopped) {
                 node.grow();
@@ -532,30 +445,14 @@ function growTree() {
         });
     }
     
-    // Grow flowers
-    if (flowers.length > 0) {
-        flowers.forEach(flower => flower.grow());
-    }
-}
-
-// Toggle auto-growth (5 times per second = 200ms interval)
-function toggleAutoGrowth() {
-    isAutoGrowing = !isAutoGrowing;
-    
-    if (isAutoGrowing) {
-        autoGrowthInterval = setInterval(growTree, 100); // 5 times per second
-        document.getElementById('autoBtn').textContent = 'Stop Auto';
-    } else {
-        clearInterval(autoGrowthInterval);
-        document.getElementById('autoBtn').textContent = 'Auto Grow';
-    }
+    Flower.flowers.forEach(flower => flower.grow());
 }
 
 // Function to branch from a random node in the tree
-function branchTree() {
-    if (!treeRoot) return;
+function branchBtn() {
+    if (!BranchNode.root) return;
     
-    const allNodes = treeRoot.getAllNodes();
+    const allNodes = BranchNode.root.getAllNodes();
     if (allNodes.length > 0) {
         const randomNode = allNodes[Math.floor(Math.random() * allNodes.length)];
         for (let i = 0; i < 10; i++) {
@@ -565,59 +462,14 @@ function branchTree() {
     }
 }
 
-// Function to create a flower at a specific position
-function createFlowerAtPosition(x, y) {
-    // Adjust center to ensure 2x2 cube fits within bounds
-    let centerX = x;
-    let centerY = y;
-    
-    // Adjust if too close to right or bottom edges
-    if (centerX >= GRID_WIDTH - 1) centerX = GRID_WIDTH - 2;
-    if (centerY >= GRID_HEIGHT - 1) centerY = GRID_HEIGHT - 2;
-    
-    const flower = new Flower(centerX, centerY);
-    flowers.push(flower);
-    
-    // Start continuous flower growth if not already started
-    if (!flowerGrowthInterval) {
-        flowerGrowthInterval = setInterval(growFlowers, 1000); // Grow flowers every 1 second
-    }
-}
-
 // Function to create a flower at a random ending node and stop its growth
-function createFlower() {
-    if (!treeRoot) return;
+function flowerBtn() {
+    if (!BranchNode.root) return;
     
-    const endingNodes = treeRoot.getEndingNodes();
+    const endingNodes = BranchNode.root.getEndingNodes();
     if (endingNodes.length > 0) {
-        // Pick a random ending node
         const randomEndingNode = endingNodes[Math.floor(Math.random() * endingNodes.length)];
-        
-        // Create a flower centered at this position
-        // Adjust center to ensure 2x2 cube fits within bounds
-        let centerX = randomEndingNode.x;
-        let centerY = randomEndingNode.y;
-        
-        // Adjust if too close to right or bottom edges
-        if (centerX >= GRID_WIDTH - 1) centerX = GRID_WIDTH - 2;
-        if (centerY >= GRID_HEIGHT - 1) centerY = GRID_HEIGHT - 2;
-        
-        const flower = new Flower(centerX, centerY);
-        flowers.push(flower);
-        
-        // Stop growth of this branch
+        new Flower(randomEndingNode.x, randomEndingNode.y);
         randomEndingNode.isStopped = true;
-        
-        // Start continuous flower growth if not already started
-        if (!flowerGrowthInterval) {
-            flowerGrowthInterval = setInterval(growFlowers, 1000); // Grow flowers every 1 second
-        }
-    }
-}
-
-// Function to grow only flowers
-function growFlowers() {
-    if (flowers.length > 0) {
-        flowers.forEach(flower => flower.grow());
     }
 }
