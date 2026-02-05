@@ -7,7 +7,11 @@ Press <b>Branch</b> to start a new branch off of any existing branch. <br>
 Press <b>Flower</b> to grow a flower at the end of any branch. <br>
 Press <b>Kill</b> to reset your plant.
 
-![Big Plant](bigplant.png)
+![Big Plant](images/bigplant.png)
+
+The video below demonstrates the different ways plants can be generated, such as only having one branch, spamming a ton of branches to make texture, spamming branches and flowers to make the pot covered in flowers, or not making any flowers at all:
+
+https://github.com/user-attachments/assets/f61a659a-06dc-4fe3-94aa-bc6eed039447
 
 ## Botany
 
