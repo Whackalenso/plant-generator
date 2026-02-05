@@ -80,14 +80,20 @@ class BranchNode {
     }
     
     grow() {
+        if (this.isStopped) return;
+
+        if (this.children.length > 0) {
+            this.children.forEach(child => child.grow());
+            return;
+        }
+
         // Check if current position is too close to edge in growth direction
         if (this.isAtEdge(this.x, this.y)) {
             // Start a flower at this position if not already stopped
             if (!this.isStopped) {
-                this.isStopped = true;
-                new Flower(this.x, this.y);
+                Flower.createFlower(this)
             }
-            return null;
+            return;
         }
         
         // Try to find a valid direction (up to 10 attempts)
@@ -104,12 +110,9 @@ class BranchNode {
                 child.color = this.color; // Inherit parent's color
                 this.children.push(child);
                 drawPixel(newX, newY, child.color);
-                return child;
+                return;
             }
         }
-        
-        // If no valid direction found after attempts, return null
-        return null;
     }
     
     branch() {
@@ -253,6 +256,19 @@ class Flower {
         this.draw();
         Flower.flowers.push(this);
     }
+
+    static createFlower(branchNode=null) {
+        if (branchNode) {
+            branchNode.isStopped = true; // Stop further growth
+            return new Flower(branchNode.x, branchNode.y);
+        }
+
+        const endingNodes = BranchNode.root.getEndingNodes();
+        if (endingNodes.length > 0) {
+            const randomEndingNode = endingNodes[Math.floor(Math.random() * endingNodes.length)];
+            return Flower.createFlower(randomEndingNode);
+        }
+    }
     
     grow() {
         // Define all possible petal positions
@@ -308,7 +324,7 @@ class Pot {
     static y;
 
     static load () {
-        Pot.img = loadImage('pot.png');
+        Pot.img = loadImage('images/pot.png');
     }
 
     static getGrowPoint() {
@@ -435,14 +451,8 @@ let tickInterval = null;
 
 // Function to grow from a random ending node
 function tick() {
-    // Grow branches
     if (BranchNode.root) {
-        const endingNodes = BranchNode.root.getEndingNodes();
-        endingNodes.forEach(node => {
-            if (!node.isStopped) {
-                node.grow();
-            }
-        });
+        BranchNode.root.grow();
     }
     
     Flower.flowers.forEach(flower => flower.grow());
@@ -452,6 +462,7 @@ function tick() {
 function branchBtn() {
     if (!BranchNode.root) return;
     
+    // This should go into the BranchNode class. 
     const allNodes = BranchNode.root.getAllNodes();
     if (allNodes.length > 0) {
         const randomNode = allNodes[Math.floor(Math.random() * allNodes.length)];
@@ -465,11 +476,5 @@ function branchBtn() {
 // Function to create a flower at a random ending node and stop its growth
 function flowerBtn() {
     if (!BranchNode.root) return;
-    
-    const endingNodes = BranchNode.root.getEndingNodes();
-    if (endingNodes.length > 0) {
-        const randomEndingNode = endingNodes[Math.floor(Math.random() * endingNodes.length)];
-        new Flower(randomEndingNode.x, randomEndingNode.y);
-        randomEndingNode.isStopped = true;
-    }
+    Flower.createFlower();
 }
